@@ -30,6 +30,7 @@ WORKDIR /CLIProxyAPI
 EXPOSE 8317
 
 ENV TZ=Asia/Shanghai
+ENV MANAGEMENT_STATIC_PATH=/CLIProxyAPI/static
 
 RUN cp /usr/share/zoneinfo/${TZ} /etc/localtime && echo "${TZ}" > /etc/timezone
 
