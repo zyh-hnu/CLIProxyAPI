@@ -30,8 +30,8 @@ WORKDIR /CLIProxyAPI
 EXPOSE 8317
 
 ENV TZ=Asia/Shanghai
-ENV MANAGEMENT_STATIC_PATH=/CLIProxyAPI/static
 
 RUN cp /usr/share/zoneinfo/${TZ} /etc/localtime && echo "${TZ}" > /etc/timezone
 
-CMD ./CLIProxyAPI -config ${CONFIG_PATH:-/CLIProxyAPI/config.yaml}
+# 从 Secret File 复制配置（只读 → 可写），使得 Management API 变更能持久保存
+CMD cp /etc/secrets/config.yaml /CLIProxyAPI/config.yaml 2>/dev/null; exec ./CLIProxyAPI
