@@ -6,7 +6,10 @@ package cmd
 import (
 	"context"
 	"errors"
+	"net/http"
+	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -41,6 +44,41 @@ func StartService(cfg *config.Config, configPath string, localPassword string) {
 			log.Warn("keep-alive endpoint idle for 10s, shutting down")
 			keepAliveCancel()
 		}))
+	}
+
+	// Self-keepalive: periodically ping the public URL to prevent Render (and other
+	// hosting platforms) from idling the service due to inactivity.
+	// Render auto-injects RENDER_EXTERNAL_URL; for other platforms, set SELF_KEEPALIVE_URL.
+	keepaliveURL := os.Getenv("SELF_KEEPALIVE_URL")
+	if keepaliveURL == "" {
+		keepaliveURL = os.Getenv("RENDER_EXTERNAL_URL")
+	}
+	keepaliveURL = strings.TrimSpace(keepaliveURL)
+	if keepaliveURL != "" {
+		keepaliveURL = strings.TrimRight(keepaliveURL, "/") + "/healthz"
+		client := &http.Client{Timeout: 10 * time.Second}
+		builder = builder.WithHooks(cliproxy.Hooks{
+			OnAfterStart: func(s *cliproxy.Service) {
+				go func() {
+					log.Infof("self-keepalive: pinging %s every 10 minutes", keepaliveURL)
+					ticker := time.NewTicker(10 * time.Minute)
+					defer ticker.Stop()
+					for {
+						select {
+						case <-ctxSignal.Done():
+							return
+						case <-ticker.C:
+							resp, err := client.Get(keepaliveURL)
+							if err != nil {
+								log.Warnf("self-keepalive ping failed: %v", err)
+							} else {
+								_ = resp.Body.Close()
+							}
+						}
+					}
+				}()
+			},
+		})
 	}
 
 	service, err := builder.Build()
